@@ -51,8 +51,7 @@
         const engine = new BABYLON.WebGPUEngine(canvas, { 
             adaptToDeviceRatio: true,
             antialiasing: true,
-            useHighPrecisionMatrix: true,
-            disableVSync: true
+            useHighPrecisionMatrix: true
         });
         
         engine.initAsync().then(() => {
