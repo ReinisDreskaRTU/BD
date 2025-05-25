@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Three.js WebGPU OBJ Viewer (VSync Disabled)</title>
+    <style>
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@v0.171.0/build/three.webgpu.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@v0.171.0/examples/jsm/",
+                "three/webgpu": "https://cdn.jsdelivr.net/npm/three@v0.171.0/build/three.webgpu.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="stats">
+        <div>Ielādes laiks: <span id="loadTime">-</span> ms</div>
+        <div>FPS: <span id="fps">-</span></div>
+        <div>VSync: <span style="color: #ff5555;">Atspējots</span></div>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import { WebGPURenderer } from 'three/webgpu';
+        
+        const canvas = document.getElementById("renderCanvas");
+        const loadTimeElement = document.getElementById("loadTime");
+        const fpsElement = document.getElementById("fps");
+        
+        // Ielādes laika mērīšanas sākums
+        const startTime = performance.now();
+        
+        // FPS mērīšanas mainīgie
+        let frameCount = 0;
+        let lastTime = performance.now();
+        const fpsUpdateInterval = 500; // Atjaunināt FPS ik pēc 500ms
+        
+        // Pārbaudām WebGPU atbalstu
+        if (!navigator.gpu) {
+            alert('WebGPU nav atbalstīts šajā pārlūkprogrammā.');
+            throw new Error('WebGPU nav atbalstīts');
+        }
+        
+        // Inicializējam renderētāju - izmantojam WebGPURenderer
+        const renderer = new THREE.WebGPURenderer({
+            canvas: canvas,
+            antialias: true,
+            powerPreference: 'high-performance'
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // Izveidojam scēnu
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+        
+        // Kamera ar kontrolēm
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        
+        // OrbitControls - līdzīgi ArcRotateCamera Babylon.js
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 10;
+        controls.maxPolarAngle = Math.PI;
+        controls.zoomSpeed = 0.1; // Līdzīgi wheelPrecision Babylon.js
+        
+        // Apgaismojums
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7);
+        light.position.set(0, 1, 0);
+        scene.add(light);
+        
+        // Papildu gaisma labākai redzamībai
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(1, 1, 1);
+        scene.add(dirLight);
+        
+        // Alternatīva pieeja - izveidojam vienkāršu aizstājēju objektu
+        const boxGeometry = new THREE.BoxGeometry(10, 10, 10);
+        const boxMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
+        const box = new THREE.Mesh(boxGeometry, boxMaterial);
+        box.position.set(0, 0, 0);
+        scene.add(box);
+        
+        // Iestatām sākuma kameras pozīciju ar lietotāja norādītajām koordinātēm
+        const targetPosition = new THREE.Vector3(0.561999858702998, -0.0066673520717063575, 0.03248042395580476);
+        
+        // Iestatām kameras parametrus - pārveidojam Babylon.js parametrus uz Three.js
+        camera.position.set(0, 0, 1299.9619722406076); // Sākotnējā pozīcija
+        controls.target.copy(targetPosition);
+        
+        // Pielāgojam kameras rotāciju, lai atbilstu Babylon.js alpha un beta
+        const alpha = 7.884495691853464; // Pagrieziens ap Y asi (horizontāli)
+        const beta = 2.603860123500957;  // Pagrieziens ap X asi (vertikāli)
+        const radius = 1299.9619722406076; // Attālums no mērķa
+        
+        // Pārveidojam sfēriskās koordinātes uz Dekarta
+        camera.position.x = radius * Math.cos(alpha) * Math.sin(beta);
+        camera.position.y = radius * Math.cos(beta);
+        camera.position.z = radius * Math.sin(alpha) * Math.sin(beta);
+        camera.position.add(targetPosition);
+        camera.lookAt(targetPosition);
+        controls.update();
+        
+        // Ielādes statusa indikators
+        loadTimeElement.textContent = "Notiek ielāde...";
+        
+        // Troleibusa koordinātes (x, y, z, izmērs) - rotētas par 90 grādiem
+        // Rotācija notiek, apmainot x un z koordinātes un mainot z zīmi
+        const trolleybusPoints = [
+            { position: new THREE.Vector3(10, 300, 300), size: 10 },
+            { position: new THREE.Vector3(10, 20, -30), size: 10 },
+            { position: new THREE.Vector3(10, -350, -300), size: 10 }
+        ];
+        
+        // Izveidojam sarkanu taisnstūri (troleibuss)
+        const trolleybusGeometry = new THREE.BoxGeometry(20, 10, 30);
+        const trolleybusMaterial = new THREE.MeshStandardMaterial({
+            color: 0xff0000,
+            roughness: 0.5,
+            metalness: 0.5
+        });
+        const trolleybus = new THREE.Mesh(trolleybusGeometry, trolleybusMaterial);
+        scene.add(trolleybus);
+        
+        // Sākotnējā pozīcija - pirmais punkts
+        trolleybus.position.copy(trolleybusPoints[0].position);
+        
+        // Animācijas parametri
+        let currentPointIndex = 0;
+        let nextPointIndex = 1;
+        let animationProgress = 0;
+        const animationSpeed = 0.005; // Ātrums (mazāks = lēnāk)
+        
+        // OBJ ielādētājs
+        const objLoader = new OBJLoader();
+        
+        // Mēģinām ielādēt OBJ failu
+        objLoader.load(
+            'public/centrs_lod2.obj',
+            function(object) {
+                console.log("OBJ ielādēts, mesh skaits:", object.children.length);
+                
+                // Ielādes laika mērīšanas beigas - tikai kad OBJ ir ielādēts
+                const endTime = performance.now();
+                loadTimeElement.textContent = Math.round(endTime - startTime) + " ms";
+                
+                // Rotējam OBJ objektu par 90 grādiem ap Y asi
+                object.rotation.y = Math.PI / 2; // 90 grādi radiānos
+                
+                // Pievienojam objektu scēnai
+                scene.add(object);
+                
+                // Noņemam aizstājēju
+                scene.remove(box);
+                
+                // Iestatām kameras parametrus ar lietotāja norādītajām koordinātēm
+                controls.target.copy(targetPosition);
+                controls.update();
+            },
+            function(xhr) {
+                // Progress
+                console.log((xhr.loaded / xhr.total * 100) + '% ielādēts');
+            },
+            function(error) {
+                // Kļūdas apstrāde - turpinām ar aizstājēju
+                console.log("Ielādes kļūda:", error);
+                
+                // Ielādes laika mērīšanas beigas - arī kļūdas gadījumā
+                const endTime = performance.now();
+                loadTimeElement.textContent = Math.round(endTime - startTime) + " ms (ar kļūdu)";
+            }
+        );
+        
+        // FPS mērīšanas funkcija
+        const updateFPS = function() {
+            const currentTime = performance.now();
+            frameCount++;
+            
+            if (currentTime - lastTime >= fpsUpdateInterval) {
+                const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                fpsElement.textContent = fps;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+        };
+        
+        // Animācijas funkcija ar setTimeout, lai apietu VSync
+        function animateFrame() {
+            // Troleibusa animācija
+            if (currentPointIndex < trolleybusPoints.length - 1) {
+                // Aprēķinām nākamo pozīciju
+                const currentPoint = trolleybusPoints[currentPointIndex].position;
+                const nextPoint = trolleybusPoints[nextPointIndex].position;
+                
+                // Lineāra interpolācija starp punktiem
+                animationProgress += animationSpeed;
+                
+                if (animationProgress >= 1) {
+                    // Pārejam uz nākamo punktu
+                    currentPointIndex++;
+                    nextPointIndex = (currentPointIndex + 1) % trolleybusPoints.length;
+                    animationProgress = 0;
+                    
+                    // Ja sasniedzam pēdējo punktu, sākam no sākuma
+                    if (currentPointIndex >= trolleybusPoints.length - 1) {
+                        currentPointIndex = 0;
+                        nextPointIndex = 1;
+                    }
+                }
+                
+                // Atjauninām troleibusa pozīciju
+                trolleybus.position.lerpVectors(
+                    currentPoint,
+                    nextPoint,
+                    animationProgress
+                );
+                
+                // Pagriežam troleibusa priekšgalu kustības virzienā
+                if (currentPointIndex < trolleybusPoints.length - 1) {
+                    const direction = new THREE.Vector3().subVectors(nextPoint, currentPoint);
+                    if (direction.length() > 0.01) {
+                        // Pielāgojam rotāciju, jo koordinātu sistēma ir mainīta
+                        const targetRotation = Math.atan2(direction.z, direction.x);
+                        trolleybus.rotation.y = targetRotation;
+                    }
+                }
+            }
+            
+            // Atjauninām kontroles
+            controls.update();
+            
+            // Renderējam scēnu
+            renderer.render(scene, camera);
+            
+            // Atjauninām FPS
+            updateFPS();
+            
+            // Izsaucam nākamo kadru ar setTimeout, lai apietu VSync
+            // Izmantojam 0ms, lai kadri tiktu renderēti pēc iespējas ātrāk
+            setTimeout(animateFrame, 0);
+        }
+        
+        // Pielāgojamies loga izmēra maiņai
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Sākam animāciju ar setTimeout, lai apietu VSync
+        setTimeout(animateFrame, 0);
+    </script>
+</body>
+</html>

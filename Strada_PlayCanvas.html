@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>PlayCanvas WebGPU + OBJ (Darbojas)</title>
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; }
+        #stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/playcanvas@2.7.7/build/playcanvas.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/playcanvas@2.7.7/scripts/parsers/obj-model.js"></script>
+</head>
+<body>
+    <div id="stats">
+        <div>Ielādes laiks: <span id="loadTime">-</span></div>
+        <div>FPS: <span id="fps">-</span></div>
+    </div>
+    <script>
+        const loadTimeElement = document.getElementById("loadTime");
+        const fpsElement = document.getElementById("fps");
+        const startTime = performance.now();
+
+        const canvas = document.createElement('canvas');
+        document.body.appendChild(canvas);
+
+        const app = new pc.Application(canvas, {
+            graphicsDeviceOptions: {
+                deviceTypes: ["webgpu"],
+                powerPreference: "high-performance"
+            }
+        });
+
+        app.start();
+        app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
+        app.setCanvasResolution(pc.RESOLUTION_AUTO);
+
+        window.addEventListener('resize', () => app.resizeCanvas());
+
+        // Kamera
+        const camera = new pc.Entity("camera");
+        camera.addComponent("camera", { clearColor: new pc.Color(0.1, 0.1, 0.1) });
+        camera.setLocalPosition(0, 100, 300);
+        app.root.addChild(camera);
+
+        // Gaisma
+        const light = new pc.Entity("light");
+        light.addComponent("light", { type: "directional", intensity: 0.7 });
+        light.setLocalEulerAngles(45, 30, 0);
+        app.root.addChild(light);
+
+        // Troleibuss
+        const box = new pc.Entity("trolleybus");
+        box.addComponent("model", { type: "box" });
+        const red = new pc.StandardMaterial();
+        red.diffuse.set(1, 0, 0);
+        red.update();
+        box.model.material = red;
+        box.setLocalScale(20, 10, 30);
+        app.root.addChild(box);
+
+        // Animācijas punkti
+        const path = [
+            new pc.Vec3(300, 0, 300),
+            new pc.Vec3(-30, 0, 20),
+            new pc.Vec3(-300, 0, -350)
+        ];
+
+        let current = 0, next = 1, progress = 0, speed = 0.005;
+        app.on("update", dt => {
+            progress += speed;
+            if (progress >= 1) {
+                current = (current + 1) % path.length;
+                next = (current + 1) % path.length;
+                progress = 0;
+            }
+            const p = new pc.Vec3().lerp(path[current], path[next], progress);
+            box.setPosition(p);
+            const dir = path[next].clone().sub(path[current]);
+            if (dir.length() > 0.01) {
+                box.setEulerAngles(0, Math.atan2(dir.x, dir.z) * pc.math.RAD_TO_DEG, 0);
+            }
+        });
+
+        // OBJ asset izmantojot parseri (darbojas)
+        const loadObjModel = () => {
+            const objLoadStartTime = performance.now();
+            
+            // Izveidojam jaunu entitāti OBJ modelim
+            const objEntity = new pc.Entity("centrs_model");
+            app.root.addChild(objEntity);
+            
+            // Ielādējam OBJ failu
+            fetch('public/centrs_lod2.obj')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP kļūda! statuss: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(objText => {
+                    // Izmantojam OBJ parseri, lai parsētu OBJ faila saturu
+                    // Parsers nav piesaistīts pc objektam, bet ir globāls ObjModelParser
+                    const objParser = new ObjModelParser(app.graphicsDevice);
+                    
+                    // Parsējam OBJ faila saturu, izmantojot callback funkciju
+                    objParser.parse(objText, (err, model) => {
+                        if (err) {
+                            console.error('Kļūda parsējot OBJ:', err);
+                            loadTimeElement.textContent = "Kļūda!";
+                            return;
+                        }
+                        
+                        // Pievienojam model komponenti entitātei
+                        objEntity.addComponent('model');
+                        objEntity.model.model = model;
+                        
+                        // Pozicionējam modeli
+                        objEntity.setLocalPosition(0, 0, 0);
+                        objEntity.setLocalScale(0.5, 0.5, 0.5);
+                        
+                        // Aprēķinam ielādes laiku
+                        const loadTime = ((performance.now() - objLoadStartTime) / 1000).toFixed(2);
+                        loadTimeElement.textContent = loadTime + " s";
+                        
+                        console.log(`OBJ modelis ielādēts: ${loadTime} sekundes`);
+                    });
+                })
+                .catch(error => {
+                    console.error('Kļūda ielādējot OBJ failu:', error);
+                    loadTimeElement.textContent = "Kļūda!";
+                });
+        };
+        
+        // Izsaucam OBJ modeļa ielādes funkciju
+        loadObjModel();
+
+        // FPS aprēķins
+        let frameCount = 0;
+        let lastTime = performance.now();
+        app.on("postrender", () => {
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 500) {
+                const fps = Math.round((frameCount * 1000) / (now - lastTime));
+                fpsElement.textContent = fps;
+                frameCount = 0;
+                lastTime = now;
+            }
+        });
+        
+        // Pievienojam kameras kontroles
+        const cameraEntity = app.root.findByName("camera");
+        let yaw = 0;
+        let pitch = 0;
+        let distance = 300;
+        
+        // Kameras rotācija ar peli
+        canvas.addEventListener('mousemove', function(e) {
+            if (e.buttons === 1) {
+                yaw -= e.movementX * 0.2;
+                pitch -= e.movementY * 0.2;
+                pitch = pc.math.clamp(pitch, -90, 90);
+                
+                const rotation = new pc.Quat().setFromEulerAngles(pitch, yaw, 0);
+                const position = new pc.Vec3(0, 0, distance);
+                position.add(new pc.Vec3(0, 50, 0));
+                // Fix: Use rotation.transformVector instead of position.transformQuat
+                rotation.transformVector(position, position);
+                
+                cameraEntity.setPosition(position);
+                cameraEntity.lookAt(0, 50, 0);
+            }
+        });
+        
+        // Kameras tālummaiņa ar ritentiņu
+        canvas.addEventListener('wheel', function(e) {
+            distance += e.deltaY * 0.1;
+            distance = pc.math.clamp(distance, 50, 1000);
+            
+            const rotation = new pc.Quat().setFromEulerAngles(pitch, yaw, 0);
+            const position = new pc.Vec3(0, 0, distance);
+            position.add(new pc.Vec3(0, 50, 0));
+            // Fix: Use rotation.transformVector instead of position.transformQuat
+            rotation.transformVector(position, position);
+            
+            cameraEntity.setPosition(position);
+        });
+    </script>
+</body>
+</html>
