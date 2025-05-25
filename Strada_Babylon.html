@@ -42,106 +42,86 @@
         const loadTimeElement = document.getElementById("loadTime");
         const fpsElement = document.getElementById("fps");
         
-        // Ielādes laika mērīšanas sākums
         const startTime = performance.now();
         
-        // FPS mērīšanas mainīgie
         let frameCount = 0;
         let lastTime = performance.now();
-        const fpsUpdateInterval = 500; // Atjaunināt FPS ik pēc 500ms
+        const fpsUpdateInterval = 500;
         
-        // Atspējojam VSync, lai FPS nebūtu ierobežots ar displeja atsvaidzes ātrumu
         const engine = new BABYLON.WebGPUEngine(canvas, { 
             adaptToDeviceRatio: true,
             antialiasing: true,
             useHighPrecisionMatrix: true,
-            disableVSync: true // Atspējojam VSync, lai FPS nebūtu ierobežots
+            disableVSync: true
         });
         
         engine.initAsync().then(() => {
             const createScene = function() {
                 const scene = new BABYLON.Scene(engine);
                 
-                // Kamera ar kontrolēm
                 const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 100, BABYLON.Vector3.Zero(), scene);
                 camera.attachControl(canvas, true);
                 camera.wheelPrecision = 0.1;
                 camera.lowerRadiusLimit = 10;
                 
-                // Apgaismojums
                 const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
                 light.intensity = 0.7;
                 
-                // Alternatīva pieeja - izveidojam vienkāršu aizstājēju objektu
                 const box = BABYLON.MeshBuilder.CreateBox("box", {size: 10}, scene);
                 box.position = new BABYLON.Vector3(0, 0, 0);
-                box.visibility = 0; // Neredzams, tikai kā aizstājējs
+                box.visibility = 0;
                 
-                // Iestatām sākuma kameras pozīciju ar lietotāja norādītajām koordinātēm
                 const targetPosition = new BABYLON.Vector3(0.561999858702998, -0.0066673520717063575, 0.03248042395580476);
                 
-                // Iestatām kameras parametrus
-                camera.alpha = 7.884495691853464; // Pagrieziens ap Y asi (horizontāli)
-                camera.beta = 2.603860123500957; // Pagrieziens ap X asi (vertikāli)
-                camera.radius = 1299.9619722406076; // Attālums no mērķa
+                camera.alpha = 7.884495691853464;
+                camera.beta = 2.603860123500957;
+                camera.radius = 1299.9619722406076;
                 camera.setTarget(targetPosition);
                 
-                // Ielādes statusa indikators
                 loadTimeElement.textContent = "Notiek ielāde...";
                 
-                // Troleibusa koordinātes (x, y, z, izmērs)
                 const trolleybusPoints = [
                     { position: new BABYLON.Vector3(300, 300, 10), size: 10 },
                     { position: new BABYLON.Vector3(-30, 20, 10), size: 10 },
                     { position: new BABYLON.Vector3(-300, -350, 10), size: 10 }
                 ];
                 
-                // Izveidojam sarkanu taisnstūri (troleibuss)
                 const trolleybus = BABYLON.MeshBuilder.CreateBox("trolleybus", {
-                    width: 20,  // Platums (x)
-                    height: 10, // Augstums (y)
-                    depth: 30   // Garums (z)
+                    width: 20,
+                    height: 10,
+                    depth: 30
                 }, scene);
                 
-                // Iestatām sarkanu materiālu troleibusam
                 const trolleybusMaterial = new BABYLON.StandardMaterial("trolleybusMaterial", scene);
-                trolleybusMaterial.diffuseColor = new BABYLON.Color3(1, 0, 0); // Sarkana krāsa
+                trolleybusMaterial.diffuseColor = new BABYLON.Color3(1, 0, 0);
                 trolleybusMaterial.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
                 trolleybus.material = trolleybusMaterial;
                 
-                // Sākotnējā pozīcija - pirmais punkts
                 trolleybus.position = trolleybusPoints[0].position.clone();
                 
-                // Animācijas parametri
                 let currentPointIndex = 0;
                 let nextPointIndex = 1;
                 let animationProgress = 0;
-                const animationSpeed = 0.005; // Ātrums (mazāks = lēnāk)
+                const animationSpeed = 0.005;
                 
-                // Animācijas funkcija
                 scene.registerBeforeRender(function() {
                     if (currentPointIndex < trolleybusPoints.length - 1) {
-                        // Aprēķinām nākamo pozīciju
                         const currentPoint = trolleybusPoints[currentPointIndex].position;
                         const nextPoint = trolleybusPoints[nextPointIndex].position;
                         
-                        // Lineāra interpolācija starp punktiem
                         animationProgress += animationSpeed;
                         
                         if (animationProgress >= 1) {
-                            // Pārejam uz nākamo punktu
                             currentPointIndex++;
                             nextPointIndex = (currentPointIndex + 1) % trolleybusPoints.length;
                             animationProgress = 0;
                             
-                            // Ja sasniedzam pēdējo punktu, sākam no sākuma
                             if (currentPointIndex >= trolleybusPoints.length - 1) {
                                 currentPointIndex = 0;
                                 nextPointIndex = 1;
                             }
                         }
                         
-                        // Atjauninām troleibusa pozīciju
                         const newPosition = BABYLON.Vector3.Lerp(
                             currentPoint,
                             nextPoint,
@@ -150,7 +130,6 @@
                         
                         trolleybus.position = newPosition;
                         
-                        // Pagriežam troleibusa priekšgalu kustības virzienā
                         if (currentPointIndex < trolleybusPoints.length - 1) {
                             const direction = nextPoint.subtract(currentPoint);
                             if (direction.length() > 0.01) {
@@ -161,27 +140,21 @@
                     }
                 });
                 
-                // Mēģinām ielādēt OBJ failu
                 BABYLON.SceneLoader.ImportMesh("", "public/", "centrs_lod2.obj", scene, 
                     function(meshes) {
                         console.log("OBJ ielādēts, mesh skaits:", meshes ? meshes.length : 0);
                         
-                        // Ielādes laika mērīšanas beigas - tikai kad OBJ ir ielādēts
                         const endTime = performance.now();
                         loadTimeElement.textContent = Math.round(endTime - startTime) + " ms";
                         
-                        // Ja ielāde izdevās, mēģinām pielāgot kameru
                         try {
                             if (meshes && meshes.length > 0) {
-                                // Pārbaudām katru mesh, vai tas ir derīgs
                                 const validMeshes = meshes.filter(mesh => 
                                     mesh && mesh.computeWorldMatrix && typeof mesh.computeWorldMatrix === 'function');
                                 
                                 if (validMeshes.length > 0) {
-                                    // Noņemam aizstājēju
                                     box.dispose();
                                     
-                                    // Iestatām kameras parametrus ar lietotāja norādītajām koordinātēm
                                     const targetPosition = new BABYLON.Vector3(0.561999858702998, -0.0066673520717063575, 0.03248042395580476);
                                     
                                     camera.alpha = 7.884495691853464;
@@ -196,10 +169,8 @@
                     }, 
                     null, 
                     function(scene, message) {
-                        // Kļūdas apstrāde - turpinām ar aizstājēju
                         console.log("Ielādes kļūda:", message);
                         
-                        // Ielādes laika mērīšanas beigas - arī kļūdas gadījumā
                         const endTime = performance.now();
                         loadTimeElement.textContent = Math.round(endTime - startTime) + " ms (ar kļūdu)";
                     }
@@ -210,7 +181,6 @@
             
             const scene = createScene();
             
-            // FPS mērīšanas funkcija
             const updateFPS = function() {
                 const currentTime = performance.now();
                 frameCount++;
@@ -223,7 +193,6 @@
                 }
             };
             
-            // Render loop ar FPS mērīšanu
             engine.runRenderLoop(function() {
                 scene.render();
                 updateFPS();
