@@ -41,6 +41,7 @@
         const canvas = document.getElementById("renderCanvas");
         const loadTimeElement = document.getElementById("loadTime");
         const fpsElement = document.getElementById("fps");
+        
         const startTime = performance.now();
         
         let frameCount = 0;
@@ -50,25 +51,27 @@
         const engine = new BABYLON.WebGPUEngine(canvas, { 
             adaptToDeviceRatio: true,
             antialiasing: true,
-            useHighPrecisionMatrix: true
+            useHighPrecisionMatrix: true,
+            disableVSync: true
         });
         
         engine.initAsync().then(() => {
             const createScene = function() {
                 const scene = new BABYLON.Scene(engine);
+                scene.clearColor = new BABYLON.Color4(0.94, 0.94, 0.94, 1);
                 
                 const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 100, BABYLON.Vector3.Zero(), scene);
                 camera.attachControl(canvas, true);
                 camera.wheelPrecision = 0.1;
                 camera.lowerRadiusLimit = 10;
-
-                const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
-                light.intensity = 0.7;
-
-                const box = BABYLON.MeshBuilder.CreateBox("box", {size: 10}, scene);
-                box.position = new BABYLON.Vector3(0, 0, 0);
-                box.visibility = 0;
-
+                
+                const hemisphericLight = new BABYLON.HemisphericLight("hemisphericLight", new BABYLON.Vector3(0, 1, 0), scene);
+                hemisphericLight.intensity = 0.7;
+                hemisphericLight.groundColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+                
+                const directionalLight = new BABYLON.DirectionalLight("directionalLight", new BABYLON.Vector3(1, 1, 1), scene);
+                directionalLight.intensity = 0.5;
+                
                 const targetPosition = new BABYLON.Vector3(0.561999858702998, -0.0066673520717063575, 0.03248042395580476);
                 
                 camera.alpha = 7.884495691853464;
@@ -85,9 +88,9 @@
                 ];
                 
                 const trolleybus = BABYLON.MeshBuilder.CreateBox("trolleybus", {
-                    width: 20,  
-                    height: 10, 
-                    depth: 30  
+                    width: 20,
+                    height: 10,
+                    depth: 30
                 }, scene);
                 
                 const trolleybusMaterial = new BABYLON.StandardMaterial("trolleybusMaterial", scene);
@@ -151,7 +154,15 @@
                                     mesh && mesh.computeWorldMatrix && typeof mesh.computeWorldMatrix === 'function');
                                 
                                 if (validMeshes.length > 0) {
-                                    box.dispose();
+                                    
+                                    for (let i = 0; i < validMeshes.length; i++) {
+                                        const mesh = validMeshes[i];
+                                        const material = new BABYLON.StandardMaterial("buildingMaterial_" + i, scene);
+                                        material.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8);
+                                        material.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+                                        material.specularPower = 64;
+                                        mesh.material = material;
+                                    }
                                     
                                     const targetPosition = new BABYLON.Vector3(0.561999858702998, -0.0066673520717063575, 0.03248042395580476);
                                     
